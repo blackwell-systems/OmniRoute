@@ -140,7 +140,18 @@ function parseObjectBody(
       continue;
     }
 
-    // Inline array.
+    // Key=value. Check before inline array so bracket patterns in quoted
+    // values (e.g. text="ERR[404]: Not Found") are not misinterpreted.
+    const eqIdx = findKeyValueSplit(content);
+    if (eqIdx > 0) {
+      const name = parseKeyFromHeader(content.slice(0, eqIdx));
+      checkDup(out, name);
+      out[name] = parseScalar(content.slice(eqIdx + 1), false);
+      i++;
+      continue;
+    }
+
+    // Inline array (e.g. items[3]: a,b,c). Only reached if no = found.
     if (!content.startsWith("@") && !content.startsWith("##")) {
       const bracketIdx = content.indexOf("[");
       if (bracketIdx > 0) {
@@ -160,16 +171,6 @@ function parseObjectBody(
       }
     }
 
-    // Key=value.
-    const eqIdx = findKeyValueSplit(content);
-    if (eqIdx > 0) {
-      const name = parseKeyFromHeader(content.slice(0, eqIdx));
-      checkDup(out, name);
-      out[name] = parseScalar(content.slice(eqIdx + 1), false);
-      i++;
-      continue;
-    }
-
     i++;
   }
   return i - start;
@@ -187,7 +188,11 @@ function findKeyValueSplit(s: string): number {
     }
     return -1;
   }
-  return s.indexOf("=");
+  const eqIdx = s.indexOf("=");
+  if (eqIdx < 0) return -1;
+  const bracketIdx = s.indexOf("[");
+  if (bracketIdx >= 0 && bracketIdx < eqIdx) return -1;
+  return eqIdx;
 }
 
 function parseKeyFromHeader(s: string): string {
